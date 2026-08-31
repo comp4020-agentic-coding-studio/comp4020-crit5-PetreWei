@@ -46,6 +46,14 @@ if (board && progress && curtain && start) {
   // you've placed a blocker anywhere, you've already learned what a tap does.
   let hintEnabled = true;
 
+  // A different hint for a different reason: four losses on the same stage
+  // in a row means the maze itself is the obstacle, not any lesson about
+  // tapping. `solve()` already knows a winning sequence --- showing all but
+  // its last placement points at the shape of the answer without placing it
+  // for you, so the stage is still yours to actually finish.
+  let failCount = 0;
+  let hintPlan: readonly Cell[] = [];
+
   function paintProgress(): void {
     const marks: HTMLElement[] = STAGES.map((_, i) => {
       const pip = document.createElement("span");
@@ -100,6 +108,14 @@ if (board && progress && curtain && start) {
       stageIndex === 0 &&
       state.blocksLeft === STAGES[0]!.blocks;
 
+    // Past three straight losses: glow the cells `startRealRound` lined up,
+    // but only the ones still open --- once you've placed one yourself it
+    // has already done its job and should stop drawing the eye.
+    const suggested = new Set<number>();
+    if (state.phase === "setup") {
+      for (const cell of hintPlan) suggested.add(indexOf(state.cols, cell));
+    }
+
     const cells: HTMLElement[] = [];
     for (let y = 0; y < state.rows; y++) {
       for (let x = 0; x < state.cols; x++) {
@@ -114,6 +130,9 @@ if (board && progress && curtain && start) {
         if (onRoute.has(at)) el.classList.add("cell--route");
         if (sameCell(cell, state.exit)) el.classList.add("cell--exit");
         if (showHint && canPlace(state, cell)) el.classList.add("cell--hint");
+        if (suggested.has(at) && state.terrain[at] === "open") {
+          el.classList.add("cell--suggest");
+        }
 
         // Resolved runners stay on the board on purpose. A spent one leaves a
         // husk where you stopped it, and an escaped one sits on the breach it
@@ -181,8 +200,9 @@ if (board && progress && curtain && start) {
     again.addEventListener("click", () => {
       if (state.phase === "won") {
         stageIndex = cleared ? 0 : stageIndex + 1;
+        failCount = 0;
       }
-      state = createStage(STAGES[stageIndex]!);
+      startRealRound();
       paint();
       again.blur();
     });
@@ -205,8 +225,22 @@ if (board && progress && curtain && start) {
     runTimer = window.setInterval(() => {
       state = step(state);
       paint();
-      if (state.phase !== "running") window.clearInterval(runTimer);
+      if (state.phase !== "running") {
+        window.clearInterval(runTimer);
+        if (state.phase === "lost") failCount += 1;
+      }
     }, RUN_TICK);
+  }
+
+  /**
+   * A fresh copy of the current stage for an actual (non-demo) round. Past
+   * three straight losses on it, also line up a hint: `solve()`'s own
+   * winning sequence with its final placement dropped, so the glow shows
+   * where the answer is heading without ever finishing it for you.
+   */
+  function startRealRound(): void {
+    state = createStage(STAGES[stageIndex]!);
+    hintPlan = failCount > 3 ? (solve(state) ?? []).slice(0, -1) : [];
   }
 
   /**
@@ -247,7 +281,7 @@ if (board && progress && curtain && start) {
     if (!demonstrating) return;
     demonstrating = false;
     window.clearInterval(demoTimer);
-    state = createStage(STAGES[stageIndex]!);
+    startRealRound();
     paint();
   }
 
