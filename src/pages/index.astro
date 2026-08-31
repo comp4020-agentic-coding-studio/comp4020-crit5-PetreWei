@@ -1,20 +1,24 @@
 ---
 import Layout from "../layouts/Layout.astro";
+import "../styles/game.css";
 ---
 
-<Layout title="COMP4020 prototype">
+<Layout
+  title="Detour"
+  description="A small browser puzzle: a grid, a runner, and the long way round."
+>
   <header>
     <nav aria-label="Primary">
       <a href="./">Home</a>
     </nav>
   </header>
-  <main>
-    <h1>COMP4020 prototype</h1>
-    <p>
-      Replace this with your prototype. This week's brief is on the course
-      website; <code>spec/README.md</code> explains how the checks in this repo
-      relate to it.
-    </p>
+  <main class="page">
+    <h1>Detour</h1>
+    <div id="progress" class="progress"></div>
+    <div class="stage">
+      <div id="board" class="board"></div>
+      <div id="curtain" class="curtain" hidden></div>
+    </div>
   </main>
   <script src="../scripts/main.ts"></script>
 </Layout>

@@ -1,0 +1,294 @@
+/*
+  Board styling. Every cell is built by main.ts at runtime, so these rules
+  have to be global --- an Astro scoped style attaches to elements present in
+  the template at build time and would miss the whole grid.
+
+  The three kinds of standing ground have to be told apart at a glance on a
+  390px phone, so they differ in hue, lightness and shape rather than in one
+  of those alone: open ground is pale and flat, trampled ground is the same
+  hue gone dusty and matte, a wall is a hard blue-slate block, and a pillar is
+  a near-black rounded stone.
+*/
+
+:root {
+  --ground: #e3ddd0;
+  --trampled: #bdb29c;
+  --wall: #3a4a61;
+  --pillar: #211c18;
+  --exit: #1f9d55;
+  --runner: #cf3a1c;
+  --grout: #8d8574;
+  --ink: #23201c;
+}
+
+/* The shared stylesheet pads the body by 2rem for prose. On a 390px phone
+   that is 64px the board cannot use, and it is what pushed the seven-wide
+   stages off the right edge. The board supplies its own spacing instead. */
+body {
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: #f4f1ea;
+  color: var(--ink);
+}
+
+main.page {
+  max-width: none;
+  padding: 0 1rem 2rem;
+  text-align: center;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Required as a landmark, but it is not what anyone came here for. */
+header nav {
+  padding: 0.5rem 1rem;
+  font-size: 0.8rem;
+}
+
+header nav a {
+  color: #8a8375;
+  text-decoration: none;
+}
+
+header nav a:hover,
+header nav a:focus-visible {
+  text-decoration: underline;
+}
+
+main.page h1 {
+  font-size: clamp(1.25rem, 4vw, 1.75rem);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  margin: 0.5rem 0 0.75rem;
+}
+
+.progress {
+  display: flex;
+  gap: 0.4rem;
+  justify-content: center;
+  margin-bottom: 0.9rem;
+}
+
+.pip {
+  width: 0.85rem;
+  height: 0.3rem;
+  border-radius: 999px;
+  background: #d6d0c2;
+}
+
+.pip--done {
+  background: var(--exit);
+}
+
+.pip--now {
+  background: var(--runner);
+  width: 1.7rem;
+}
+
+.stage {
+  position: relative;
+  display: inline-block;
+}
+
+/*
+  Cell size is derived from the stage's own column and row counts, which
+  main.ts sets on the element. Sizing off viewport units alone silently
+  clipped the seven-wide boards at 390px while the five-wide ones looked
+  fine --- the board has to know how wide it is before it can decide how
+  big a cell may be.
+*/
+.board {
+  --gap: 3px;
+  --cell: max(
+    26px,
+    min(
+      calc((100vw - 3.5rem - (var(--cols, 5) - 1) * var(--gap)) / var(--cols, 5)),
+      calc((100vh - 15rem) / var(--rows, 7)),
+      88px
+    )
+  );
+  display: grid;
+  grid-template-columns: repeat(var(--cols, 5), var(--cell));
+  gap: var(--gap);
+  padding: var(--gap);
+  background: var(--grout);
+  border-radius: 6px;
+  touch-action: manipulation;
+  user-select: none;
+}
+
+.cell {
+  position: relative;
+  width: var(--cell);
+  height: var(--cell);
+  background: var(--ground);
+  border-radius: 3px;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+}
+
+/* Trampled: still walkable, no longer buildable. Matte and scuffed so it
+   reads as ground that has been used rather than as an obstacle. */
+.cell--trampled {
+  background: var(--trampled);
+  background-image: repeating-linear-gradient(
+    45deg,
+    rgb(0 0 0 / 9%) 0 2px,
+    transparent 2px 5px
+  );
+  cursor: default;
+}
+
+.cell--wall {
+  background: var(--wall);
+  border-radius: 2px;
+  box-shadow: inset 0 -3px 0 rgb(0 0 0 / 25%);
+  cursor: default;
+}
+
+/* A pillar is drawn inside the cell rather than as the cell, so the board's
+   grout never shows through the corners as a dark halo. */
+.cell--pillar {
+  cursor: default;
+}
+
+.cell--pillar::before {
+  content: "";
+  position: absolute;
+  inset: 12%;
+  border-radius: 50%;
+  background: var(--pillar);
+}
+
+/* The route the runner is currently taking, so a detour you just made is
+   visible as a detour instead of the runner turning for no reason. */
+.cell--route::after {
+  content: "";
+  position: absolute;
+  width: 22%;
+  height: 22%;
+  border-radius: 50%;
+  background: rgb(0 0 0 / 22%);
+}
+
+.cell--exit {
+  background: var(--exit);
+  box-shadow: inset 0 0 0 4px rgb(255 255 255 / 55%);
+}
+
+.cell--exit.cell--route::after {
+  background: rgb(255 255 255 / 70%);
+}
+
+.cell--runner {
+  cursor: default;
+}
+
+.cell--runner.cell--route::after {
+  content: none;
+}
+
+/* The runner and its remaining stamina are the same object: one disc with a
+   number in it, so there is no separate meter to look up and read. */
+.meter {
+  position: absolute;
+  inset: 8%;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--runner);
+  color: #fff;
+  font-size: calc(var(--cell) * 0.4);
+  font-weight: 700;
+  line-height: 1;
+  pointer-events: none;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 30%);
+}
+
+/* A runner that has not entered yet, so a second one arriving is not a
+   surprise the player had no way to see coming. */
+.cell--waiting .meter {
+  background: transparent;
+  color: var(--runner);
+  box-shadow: inset 0 0 0 3px var(--runner);
+}
+
+.cell--swift .meter {
+  box-shadow:
+    0 0 0 3px #f6c3b6,
+    0 1px 3px rgb(0 0 0 / 30%);
+}
+
+/* A refused tap: the one placement the rules forbid is the one that would
+   leave no route at all, and this says so without a word. */
+.cell--refused {
+  animation: refused 380ms ease-out;
+}
+
+@keyframes refused {
+  0%,
+  100% {
+    background: var(--ground);
+  }
+  20%,
+  60% {
+    background: #e46a6a;
+  }
+}
+
+.curtain {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  gap: 0.9rem;
+  border-radius: 6px;
+  background: rgb(244 241 234 / 88%);
+  backdrop-filter: blur(2px);
+}
+
+.curtain[hidden] {
+  display: none;
+}
+
+.verdict {
+  margin: 0;
+  font-size: clamp(1.1rem, 4.5vw, 1.6rem);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
+.curtain--lost .verdict {
+  color: var(--runner);
+}
+
+.again {
+  justify-self: center;
+  font: inherit;
+  font-weight: 700;
+  padding: 0.5rem 1.6rem;
+  min-height: 44px;
+  border: none;
+  border-radius: 999px;
+  background: var(--ink);
+  color: #fff;
+  cursor: pointer;
+}
+
+.again:focus-visible {
+  outline: 3px solid var(--exit);
+  outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cell--refused {
+    animation-duration: 1ms;
+  }
+}
