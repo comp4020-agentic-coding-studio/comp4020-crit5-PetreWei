@@ -32,6 +32,8 @@ export type Fate = "escaped" | "spent";
 export interface Runner {
   readonly at: Cell;
   readonly stamina: number;
+  /** What it started with, so the view can draw stamina as a fraction. */
+  readonly maxStamina: number;
   readonly speed: number;
   readonly entersOn: number;
   readonly fate: Fate | null;
@@ -142,6 +144,7 @@ export function createStage(config: StageConfig): State {
     runners: config.runners.map((runner) => ({
       at: runner.entry,
       stamina: runner.stamina,
+      maxStamina: runner.stamina,
       speed: runner.speed ?? 1,
       entersOn: runner.entersOn ?? 1,
       fate: null,
