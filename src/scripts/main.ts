@@ -128,13 +128,16 @@ if (board && progress && curtain && start) {
 
           const meter = document.createElement("span");
           meter.className = "meter";
-          // Drawn as a fraction of what it started with, so the disc shrinks
+          // Drawn as a fraction of what it started with, so the body shrinks
           // and greys as it tires: a number alone reads as a score, and a
           // score going down reads as losing.
           meter.style.setProperty(
             "--vigour",
             String(Math.max(0, runner.stamina) / runner.maxStamina),
           );
+          // How fierce the horns look, tied to the real difficulty ramp
+          // rather than an arbitrary cosmetic choice.
+          meter.style.setProperty("--menace", String(stageIndex));
           meter.textContent = String(Math.max(0, runner.stamina));
           el.append(meter);
         }

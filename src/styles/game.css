@@ -279,24 +279,37 @@ main.page {
 }
 
 /*
-  The runner and its stamina are one object. It is drawn as a fraction of
-  what it started with, so the disc shrinks and greys as it tires: a bare
+  The runner and its stamina are one creature. It is drawn as a fraction of
+  what it started with, so the body shrinks and greys as it tires: a bare
   number reads as a score, and a score counting down reads as losing, which
   is backwards. A visibly weakening thing reads as winning without a word.
+  The body is an irregular blob rather than a circle, with two horns and two
+  eyes, so it reads as a creature rather than a UI counter. The horns grow
+  with --menace (set per stage in main.ts) so it looks fiercer on the stages
+  that actually are harder, rather than as an unrelated cosmetic flourish.
 */
 .meter {
   --vigour: 1;
+  --menace: 0;
   position: absolute;
   inset: calc(6% + (1 - var(--vigour)) * 15%);
   display: grid;
   place-items: center;
-  border-radius: 50%;
-  background: var(--runner);
-  background: color-mix(
+  border-radius: 42% 58% 55% 45% / 55% 45% 58% 42%;
+  background-color: var(--runner);
+  background-color: color-mix(
     in oklab,
     var(--runner) calc(var(--vigour) * 100%),
     var(--drained)
   );
+  background-image:
+    radial-gradient(circle, #1a1a1a 60%, transparent 62%),
+    radial-gradient(circle, #1a1a1a 60%, transparent 62%);
+  background-size: 14% 14%;
+  background-repeat: no-repeat;
+  background-position:
+    32% 38%,
+    68% 38%;
   color: #fff;
   font-size: calc(var(--cell) * 0.34);
   font-weight: 700;
@@ -308,9 +321,30 @@ main.page {
     background-color 180ms linear;
 }
 
+.meter::before,
+.meter::after {
+  content: "";
+  position: absolute;
+  top: calc(var(--cell) * -0.06 - var(--menace) * var(--cell) * 0.03);
+  width: calc(var(--cell) * 0.16 + var(--menace) * var(--cell) * 0.025);
+  height: calc(var(--cell) * 0.22 + var(--menace) * var(--cell) * 0.03);
+  background-color: inherit;
+  clip-path: polygon(50% 0%, 0% 100%, 100% 100%);
+}
+
+.meter::before {
+  left: 6%;
+  transform: rotate(-12deg);
+}
+
+.meter::after {
+  right: 6%;
+  transform: rotate(12deg);
+}
+
 /* Stopped, and left where you stopped it. */
 .cell--spent .meter {
-  background: var(--drained);
+  background-color: var(--drained);
   color: rgb(255 255 255 / 80%);
   box-shadow: none;
 }
