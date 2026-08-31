@@ -3,19 +3,20 @@
   have to be global --- an Astro scoped style attaches to elements present in
   the template at build time and would miss the whole grid.
 
-  The three kinds of standing ground have to be told apart at a glance on a
-  390px phone, so they differ in hue, lightness and shape rather than in one
-  of those alone: open ground is pale and flat, trampled ground is the same
-  hue gone dusty and matte, a wall is a hard blue-slate block, and a pillar is
-  a near-black rounded stone.
+  The maze's own walls and the blockers the player sets down have to be told
+  apart at a glance on a 390px phone, so they differ in hue, material and
+  shape rather than in one of those alone: a wall is warm brown masonry
+  filling its cell corner to corner, a blocker is a cool blue tile inset with
+  a visible margin of ground around it. One is the building; the other is
+  something resting on the floor of it, which is the thing you can pick up.
 */
 
 :root {
   --page: #f4f1ea;
   --ground: #e3ddd0;
   --trampled: #bdb29c;
-  --wall: #3a4a61;
-  --pillar: #211c18;
+  --wall: #4a3f34;
+  --block: #3a6ea8;
   --runner: #cf3a1c;
   --drained: #a79f92;
   --grout: #8d8574;
@@ -84,12 +85,39 @@ main.page h1 {
 }
 
 .pip--done {
-  background: var(--exit);
+  background: #6f8f5a;
 }
 
 .pip--now {
   background: var(--runner);
   width: 1.7rem;
+}
+
+/*
+  Blockers still in hand, one dot each. This is the only reason the budget
+  reads as a budget: a number would have to be counted, whereas dots going
+  out one by one shows you how close the run is to starting.
+*/
+.purse {
+  display: inline-flex;
+  gap: 0.3rem;
+  align-items: center;
+  margin-left: 0.7rem;
+  padding-left: 0.7rem;
+  border-left: 1px solid #d6d0c2;
+}
+
+.coin {
+  width: 0.62rem;
+  height: 0.62rem;
+  border-radius: 3px;
+  background: var(--block);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 25%);
+}
+
+.coin--spent {
+  background: transparent;
+  box-shadow: inset 0 0 0 2px #d6d0c2;
 }
 
 .stage {
@@ -131,42 +159,48 @@ main.page h1 {
   height: var(--cell);
   background: var(--ground);
   border-radius: 3px;
-  cursor: pointer;
+  cursor: default;
   display: grid;
   place-items: center;
 }
 
-/* Trampled: still walkable, no longer buildable. Matte and scuffed so it
-   reads as ground that has been used rather than as an obstacle. */
-.cell--trampled {
+.board--setup .cell--open,
+.board--setup .cell--block {
+  cursor: pointer;
+}
+
+/* The maze itself: masonry, filling its cell corner to corner, obviously
+   not something you put there and not something you can move. */
+.cell--wall {
+  background: var(--wall);
+  border-radius: 2px;
+  box-shadow: inset 0 -3px 0 rgb(0 0 0 / 28%);
+  cursor: default;
+}
+
+/* Yours: a smaller inset tile in a different material and colour, sitting ON
+   the ground rather than being the ground. The gap around it is the whole
+   signal that this one is a thing you placed --- and can pick back up. */
+.cell--block::before {
+  content: "";
+  position: absolute;
+  inset: 9%;
+  border-radius: 3px;
+  background: var(--block);
+  box-shadow:
+    inset 0 -3px 0 rgb(0 0 0 / 22%),
+    0 1px 4px rgb(0 0 0 / 28%);
+}
+
+/* Where a runner has already walked. Cosmetic --- by the time any of this is
+   drawn the placing is over --- but it makes the run readable. */
+.cell--trail {
   background: var(--trampled);
   background-image: repeating-linear-gradient(
     45deg,
     rgb(0 0 0 / 9%) 0 2px,
     transparent 2px 5px
   );
-  cursor: default;
-}
-
-.cell--wall {
-  background: var(--wall);
-  border-radius: 2px;
-  box-shadow: inset 0 -3px 0 rgb(0 0 0 / 25%);
-  cursor: default;
-}
-
-/* A pillar is drawn inside the cell rather than as the cell, so the board's
-   grout never shows through the corners as a dark halo. */
-.cell--pillar {
-  cursor: default;
-}
-
-.cell--pillar::before {
-  content: "";
-  position: absolute;
-  inset: 12%;
-  border-radius: 50%;
-  background: var(--pillar);
 }
 
 /* The route the runner is currently taking, so a detour you just made is
@@ -261,20 +295,6 @@ main.page h1 {
     0 0 0 6px var(--runner);
 }
 
-/* A runner that has not entered yet, so a second one arriving is not a
-   surprise the player had no way to see coming. */
-.cell--waiting .meter {
-  background: transparent;
-  color: var(--runner);
-  box-shadow: inset 0 0 0 3px var(--runner);
-}
-
-.cell--swift .meter {
-  box-shadow:
-    0 0 0 3px #f6c3b6,
-    0 1px 3px rgb(0 0 0 / 30%);
-}
-
 /* A refused tap: the one placement the rules forbid is the one that would
    leave no route at all, and this says so without a word. */
 .cell--refused {
@@ -348,7 +368,7 @@ main.page h1 {
 }
 
 .again:focus-visible {
-  outline: 3px solid var(--exit);
+  outline: 3px solid var(--block);
   outline-offset: 3px;
 }
 

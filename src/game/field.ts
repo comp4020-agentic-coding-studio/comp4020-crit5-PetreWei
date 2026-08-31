@@ -2,53 +2,52 @@
 // import this module directly, which is the only way the mechanic gets
 // tested at all --- JSDOM can't run the client script or lay the board out,
 // so anything that matters has to be decidable from these functions alone.
+//
+// A stage is a fixed maze plus a budget of blockers. The player spends the
+// whole budget with the runner standing still; placing the last blocker
+// starts the run, and from there the board plays itself out. That makes the
+// puzzle fully deterministic: a placement either lengthens every runner's
+// route past its stamina or it doesn't, and `solve` below can say which.
 
-export type Terrain = "open" | "pillar" | "wall" | "trampled";
+export type Terrain = "open" | "wall" | "block";
 
 export interface Cell {
   readonly x: number;
   readonly y: number;
 }
 
-export interface RunnerConfig {
-  readonly entry: Cell;
-  readonly stamina: number;
-  /** Cells crossed per turn. Two makes a runner that outruns your building. */
-  readonly speed?: number;
-  /** First turn this runner moves. Later entries share the turns already spent. */
-  readonly entersOn?: number;
-}
-
 export interface StageConfig {
-  readonly cols: number;
-  readonly rows: number;
-  readonly exit: Cell;
-  readonly pillars?: readonly Cell[];
-  readonly runners: readonly RunnerConfig[];
+  /** Rows of `#` wall, `.` open, `o` a runner's start, `X` the way out. */
+  readonly map: readonly string[];
+  /** How many blockers the player gets. The run begins when the last is set. */
+  readonly blocks: number;
+  /** Cells a runner can cross before it drops. */
+  readonly stamina: number;
 }
 
 export type Fate = "escaped" | "spent";
 
 export interface Runner {
   readonly at: Cell;
+  readonly start: Cell;
   readonly stamina: number;
-  /** What it started with, so the view can draw stamina as a fraction. */
   readonly maxStamina: number;
-  readonly speed: number;
-  readonly entersOn: number;
   readonly fate: Fate | null;
 }
 
-export type Status = "playing" | "won" | "lost";
+/** Placing blockers, watching it play out, and the two ways it can end. */
+export type Phase = "setup" | "running" | "won" | "lost";
 
 export interface State {
   readonly cols: number;
   readonly rows: number;
   readonly exit: Cell;
   readonly terrain: readonly Terrain[];
+  /** Cells a runner has crossed. Cosmetic --- it makes the run readable. */
+  readonly trail: readonly boolean[];
   readonly runners: readonly Runner[];
-  readonly turn: number;
-  readonly status: Status;
+  readonly blocksLeft: number;
+  readonly phase: Phase;
 }
 
 export function sameCell(a: Cell, b: Cell): boolean {
@@ -63,12 +62,6 @@ function inBounds(cols: number, rows: number, cell: Cell): boolean {
   return cell.x >= 0 && cell.y >= 0 && cell.x < cols && cell.y < rows;
 }
 
-// Trampled ground is ground, so it stays walkable --- it only stops being
-// buildable. Walls and pillars are the only things that turn a route.
-function walkable(terrain: Terrain): boolean {
-  return terrain === "open" || terrain === "trampled";
-}
-
 const STEPS: readonly Cell[] = [
   { x: 0, y: -1 },
   { x: 1, y: 0 },
@@ -77,10 +70,10 @@ const STEPS: readonly Cell[] = [
 ];
 
 /**
- * Breadth-first route from `from` to `exit` over a given terrain, including
- * both endpoints. Null when there is no way through. Taking terrain as an
- * argument rather than reading it off a state is what lets `canPlace` ask
- * the question about a board that doesn't exist yet.
+ * Breadth-first route from `from` to `exit`, including both endpoints, or
+ * null when there is no way through. Terrain comes in as an argument rather
+ * than off a state so `canPlace` can ask about a board that doesn't exist
+ * yet.
  */
 export function pathOver(
   cols: number,
@@ -109,7 +102,7 @@ export function pathOver(
         if (!inBounds(cols, rows, cell)) continue;
         const there = indexOf(cols, cell);
         if (seen[there] === 1) continue;
-        if (!walkable(terrain[there]!)) continue;
+        if (terrain[there] !== "open") continue;
         seen[there] = 1;
         cameFrom[there] = here;
         if (there === target) {
@@ -132,47 +125,66 @@ export function routeFor(state: State, from: Cell): Cell[] | null {
 }
 
 export function createStage(config: StageConfig): State {
-  const terrain: Terrain[] = new Array(config.cols * config.rows).fill("open");
-  for (const pillar of config.pillars ?? []) {
-    terrain[indexOf(config.cols, pillar)] = "pillar";
+  const rows = config.map.length;
+  const cols = Math.max(...config.map.map((row) => row.length));
+  const terrain: Terrain[] = new Array(cols * rows).fill("wall");
+  const starts: Cell[] = [];
+  let exit: Cell | null = null;
+
+  for (let y = 0; y < rows; y++) {
+    const row = config.map[y]!;
+    for (let x = 0; x < cols; x++) {
+      const mark = row[x] ?? "#";
+      const cell = { x, y };
+      if (mark === "#") continue;
+      terrain[indexOf(cols, cell)] = "open";
+      if (mark === "o") starts.push(cell);
+      if (mark === "X") exit = cell;
+    }
   }
+
+  if (exit === null) throw new Error("stage map has no exit (X)");
+  if (starts.length === 0) throw new Error("stage map has no runner (o)");
+
   return {
-    cols: config.cols,
-    rows: config.rows,
-    exit: config.exit,
+    cols,
+    rows,
+    exit,
     terrain,
-    runners: config.runners.map((runner) => ({
-      at: runner.entry,
-      stamina: runner.stamina,
-      maxStamina: runner.stamina,
-      speed: runner.speed ?? 1,
-      entersOn: runner.entersOn ?? 1,
+    trail: new Array(cols * rows).fill(false),
+    runners: starts.map((start) => ({
+      at: start,
+      start,
+      stamina: config.stamina,
+      maxStamina: config.stamina,
       fate: null,
     })),
-    turn: 0,
-    status: "playing",
+    blocksLeft: config.blocks,
+    phase: "setup",
   };
 }
 
 /**
- * The rule the spec test is written against: a wall may go anywhere open
- * except where it would leave a runner with no route to the exit at all.
- * Refusing the tap (rather than allowing it and inventing a way out) is what
- * stops a board ever soft-locking.
+ * The rule the spec test is written against: a blocker may go on any open
+ * cell except one that would leave a runner with no route out at all.
+ * Refusing the placement, rather than allowing it and inventing a way out,
+ * is what stops a board ever soft-locking --- and it is what keeps this a
+ * routing puzzle instead of a sealing puzzle, since walling the exit in
+ * would otherwise win every stage outright.
  */
 export function canPlace(state: State, cell: Cell): boolean {
-  if (state.status !== "playing") return false;
+  if (state.phase !== "setup") return false;
+  if (state.blocksLeft <= 0) return false;
   if (!inBounds(state.cols, state.rows, cell)) return false;
   if (sameCell(cell, state.exit)) return false;
   if (state.terrain[indexOf(state.cols, cell)] !== "open") return false;
   for (const runner of state.runners) {
-    if (runner.fate === null && sameCell(runner.at, cell)) return false;
+    if (sameCell(runner.start, cell)) return false;
   }
 
   const trial = state.terrain.slice();
-  trial[indexOf(state.cols, cell)] = "wall";
+  trial[indexOf(state.cols, cell)] = "block";
   for (const runner of state.runners) {
-    if (runner.fate !== null) continue;
     if (!pathOver(state.cols, state.rows, trial, runner.at, state.exit)) {
       return false;
     }
@@ -180,67 +192,73 @@ export function canPlace(state: State, cell: Cell): boolean {
   return true;
 }
 
-export function placeWall(state: State, cell: Cell): State | null {
+/** Spending the last blocker is what starts the run; there is no go button. */
+export function placeBlock(state: State, cell: Cell): State | null {
   if (!canPlace(state, cell)) return null;
   const terrain = state.terrain.slice();
-  terrain[indexOf(state.cols, cell)] = "wall";
-  return { ...state, terrain };
+  terrain[indexOf(state.cols, cell)] = "block";
+  const blocksLeft = state.blocksLeft - 1;
+  return {
+    ...state,
+    terrain,
+    blocksLeft,
+    phase: blocksLeft === 0 ? "running" : "setup",
+  };
 }
 
-function statusOf(runners: readonly Runner[]): Status {
+/** Tapping a blocker you already set picks it back up, while setup lasts. */
+export function removeBlock(state: State, cell: Cell): State | null {
+  if (state.phase !== "setup") return null;
+  if (!inBounds(state.cols, state.rows, cell)) return null;
+  if (state.terrain[indexOf(state.cols, cell)] !== "block") return null;
+  const terrain = state.terrain.slice();
+  terrain[indexOf(state.cols, cell)] = "open";
+  return { ...state, terrain, blocksLeft: state.blocksLeft + 1 };
+}
+
+/** One tap: pick a blocker back up, or set one down. */
+export function tap(state: State, cell: Cell): State | null {
+  return removeBlock(state, cell) ?? placeBlock(state, cell);
+}
+
+function phaseFor(runners: readonly Runner[]): Phase {
   if (runners.some((runner) => runner.fate === "escaped")) return "lost";
   if (runners.every((runner) => runner.fate !== null)) return "won";
-  return "playing";
+  return "running";
 }
 
-/** One turn of movement: every runner that has entered takes its steps. */
+/** One tick of the run. Every unresolved runner takes a single step. */
 export function step(state: State): State {
-  if (state.status !== "playing") return state;
+  if (state.phase !== "running") return state;
 
-  const turn = state.turn + 1;
-  const terrain = state.terrain.slice();
+  const trail = state.trail.slice();
   const runners = state.runners.map((runner) => ({ ...runner }));
 
   for (const runner of runners) {
-    if (runner.fate !== null || turn < runner.entersOn) continue;
-    for (let moved = 0; moved < runner.speed; moved++) {
-      terrain[indexOf(state.cols, runner.at)] = "trampled";
-      const route = pathOver(
-        state.cols,
-        state.rows,
-        terrain,
-        runner.at,
-        state.exit,
-      );
-      if (route === null || route.length < 2) break;
-      runner.at = route[1]!;
-      runner.stamina -= 1;
-      if (sameCell(runner.at, state.exit)) {
-        runner.fate = "escaped";
-        break;
-      }
-      terrain[indexOf(state.cols, runner.at)] = "trampled";
-      if (runner.stamina <= 0) {
-        runner.fate = "spent";
-        break;
-      }
+    if (runner.fate !== null) continue;
+    trail[indexOf(state.cols, runner.at)] = true;
+    const route = pathOver(
+      state.cols,
+      state.rows,
+      state.terrain,
+      runner.at,
+      state.exit,
+    );
+    if (route === null || route.length < 2) continue;
+    runner.at = route[1]!;
+    runner.stamina -= 1;
+    if (sameCell(runner.at, state.exit)) {
+      runner.fate = "escaped";
+      continue;
     }
+    trail[indexOf(state.cols, runner.at)] = true;
+    if (runner.stamina <= 0) runner.fate = "spent";
   }
 
-  return { ...state, turn, terrain, runners, status: statusOf(runners) };
+  return { ...state, trail, runners, phase: phaseFor(runners) };
 }
 
-/**
- * A whole turn. Placing is the only thing the player does, and it always
- * hands the runners a step in exchange --- which is why there is no wall
- * budget to draw: their stamina is the clock for both sides.
- */
-export function takeTurn(state: State, cell: Cell): State | null {
-  const walled = placeWall(state, cell);
-  return walled === null ? null : step(walled);
-}
-
-/** Every cell a wall could legally go in right now. */
+/** Every cell a blocker could legally go in right now. */
 export function legalPlacements(state: State): Cell[] {
   const cells: Cell[] = [];
   for (let y = 0; y < state.rows; y++) {
@@ -250,4 +268,57 @@ export function legalPlacements(state: State): Cell[] {
     }
   }
   return cells;
+}
+
+/**
+ * How far the nearest-to-escaping runner still has to walk. Because the run
+ * takes no input, this single number decides the whole stage: every runner
+ * has to be made to walk further than its stamina.
+ */
+export function shortestRun(state: State): number {
+  let worst = Infinity;
+  for (const runner of state.runners) {
+    const route = routeFor(state, runner.at);
+    if (route === null) return Infinity;
+    worst = Math.min(worst, route.length - 1);
+  }
+  return worst;
+}
+
+/**
+ * Beam search for a placement that wins the stage, used to prove in the spec
+ * tests that every shipped stage can actually be solved with the budget it
+ * gives you. Returning a placement is proof; returning null is only evidence,
+ * since the search is bounded --- so stages are tuned to be found easily
+ * rather than tuned to sit right at the edge of what it can reach.
+ */
+export function solve(start: State, beamWidth = 140): Cell[] | null {
+  let beam: Array<{ state: State; picks: Cell[] }> = [{ state: start, picks: [] }];
+
+  for (let depth = 0; depth < start.blocksLeft; depth++) {
+    const next: Array<{ state: State; picks: Cell[]; score: number }> = [];
+    const seen = new Set<string>();
+
+    for (const { state, picks } of beam) {
+      for (const cell of legalPlacements(state)) {
+        const placed = placeBlock(state, cell);
+        if (placed === null) continue;
+        const key = placed.terrain.join("");
+        if (seen.has(key)) continue;
+        seen.add(key);
+        next.push({ state: placed, picks: [...picks, cell], score: shortestRun(placed) });
+      }
+    }
+    if (next.length === 0) return null;
+
+    next.sort((a, b) => b.score - a.score);
+    beam = next.slice(0, beamWidth).map(({ state, picks }) => ({ state, picks }));
+  }
+
+  for (const { state, picks } of beam) {
+    if (state.runners.every((runner) => shortestRun(state) > runner.maxStamina)) {
+      return picks;
+    }
+  }
+  return null;
 }

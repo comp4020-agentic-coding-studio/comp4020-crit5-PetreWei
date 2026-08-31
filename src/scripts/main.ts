@@ -9,7 +9,7 @@ import {
   routeFor,
   sameCell,
   step,
-  takeTurn,
+  tap,
   type Cell,
   type State,
 } from "../game/field";
@@ -19,31 +19,48 @@ const board = document.querySelector<HTMLElement>("#board");
 const progress = document.querySelector<HTMLElement>("#progress");
 const curtain = document.querySelector<HTMLElement>("#curtain");
 
+const RUN_TICK = 230;
+const DEMO_TICK = 260;
+
 if (board && progress && curtain) {
   let stageIndex = 0;
   let state = createStage(STAGES[0]!);
+  let runTimer = 0;
 
   // The goal of this game is to PREVENT something, and a board at rest can't
-  // say that: a token, a dotted line and a way out read just as easily as
-  // "escort it to the exit", which is the opposite of the point. So before
-  // anyone touches it the board plays itself, loses, and resets --- the fail
-  // state is the only honest way to show what you are meant to stop.
+  // say that: a token, a route and a way out read just as easily as "escort
+  // it to the exit", which is the opposite of the point. So before anyone
+  // touches it the board plays itself, loses, and resets --- the fail state
+  // is the only honest way to show what you are meant to stop.
   let demonstrating = true;
   let demoTimer = 0;
   let holdFrames = 0;
 
-  const entered = (state: State, index: number): boolean =>
-    state.turn + 1 >= state.runners[index]!.entersOn;
-
   function paintProgress(): void {
-    progress!.replaceChildren(
-      ...STAGES.map((_, i) => {
-        const pip = document.createElement("span");
-        pip.className =
-          "pip" + (i < stageIndex ? " pip--done" : i === stageIndex ? " pip--now" : "");
-        return pip;
-      }),
-    );
+    const marks: HTMLElement[] = STAGES.map((_, i) => {
+      const pip = document.createElement("span");
+      pip.className =
+        "pip" + (i < stageIndex ? " pip--done" : i === stageIndex ? " pip--now" : "");
+      return pip;
+    });
+
+    // The blockers still in hand, as one dot each. A count you can see at a
+    // glance is the whole reason the budget reads as a budget. Hidden during
+    // the demo, where an empty purse would be describing a hand nobody holds.
+    if (demonstrating) {
+      progress!.replaceChildren(...marks);
+      return;
+    }
+
+    const purse = document.createElement("span");
+    purse.className = "purse";
+    for (let i = 0; i < STAGES[stageIndex]!.blocks; i++) {
+      const dot = document.createElement("span");
+      dot.className = "coin" + (i < state.blocksLeft ? "" : " coin--spent");
+      purse.append(dot);
+    }
+
+    progress!.replaceChildren(...marks, purse);
   }
 
   function paintBoard(): void {
@@ -51,16 +68,17 @@ if (board && progress && curtain) {
     // not overflow a phone the way a five-wide one doesn't.
     board!.style.setProperty("--cols", String(state.cols));
     board!.style.setProperty("--rows", String(state.rows));
+    board!.classList.toggle("board--setup", state.phase === "setup");
 
-    // Where each runner is heading, so that a detour you just created is
-    // visible as a detour rather than as the runner mysteriously turning.
+    // The route each runner will take. During setup this is the only way to
+    // see what a blocker actually bought you before committing to the run.
     const onRoute = new Set<number>();
-    state.runners.forEach((runner, i) => {
-      if (runner.fate !== null || !entered(state, i)) return;
+    for (const runner of state.runners) {
+      if (runner.fate !== null) continue;
       for (const cell of routeFor(state, runner.at) ?? []) {
         onRoute.add(indexOf(state.cols, cell));
       }
-    });
+    }
 
     const cells: HTMLElement[] = [];
     for (let y = 0; y < state.rows; y++) {
@@ -72,24 +90,20 @@ if (board && progress && curtain) {
         el.dataset["x"] = String(x);
         el.dataset["y"] = String(y);
 
+        if (state.trail[at]) el.classList.add("cell--trail");
         if (onRoute.has(at)) el.classList.add("cell--route");
         if (sameCell(cell, state.exit)) el.classList.add("cell--exit");
 
         // Resolved runners stay on the board on purpose. A spent one leaves a
         // husk where you stopped it, and an escaped one sits on the breach it
         // walked out of --- so both endings have a picture, not just a word.
-        const index = state.runners.findIndex((runner) =>
-          sameCell(runner.fate === "escaped" ? state.exit : runner.at, cell),
+        const runner = state.runners.find((r) =>
+          sameCell(r.fate === "escaped" ? state.exit : r.at, cell),
         );
-        if (index !== -1) {
-          const runner = state.runners[index]!;
+        if (runner) {
           el.classList.add("cell--runner");
           if (runner.fate === "spent") el.classList.add("cell--spent");
           if (runner.fate === "escaped") el.classList.add("cell--escaped");
-          if (runner.fate === null && !entered(state, index)) {
-            el.classList.add("cell--waiting");
-          }
-          if (runner.speed > 1) el.classList.add("cell--swift");
 
           const meter = document.createElement("span");
           meter.className = "meter";
@@ -110,19 +124,19 @@ if (board && progress && curtain) {
   }
 
   function paintCurtain(): void {
-    if (state.status === "playing") {
+    if (state.phase === "setup" || state.phase === "running") {
       curtain!.replaceChildren();
       curtain!.hidden = true;
       return;
     }
 
-    const cleared = state.status === "won" && stageIndex === STAGES.length - 1;
+    const cleared = state.phase === "won" && stageIndex === STAGES.length - 1;
     const mark = document.createElement("p");
     mark.className = "verdict";
     mark.textContent =
-      state.status === "lost" ? "It got out" : cleared ? "All clear" : "Contained";
+      state.phase === "lost" ? "It got out" : cleared ? "All clear" : "Contained";
 
-    curtain!.classList.toggle("curtain--lost", state.status === "lost");
+    curtain!.classList.toggle("curtain--lost", state.phase === "lost");
 
     // While the board is demonstrating itself there is nothing to press: the
     // next input anywhere hands control over. The class also stops the
@@ -139,9 +153,9 @@ if (board && progress && curtain) {
     const again = document.createElement("button");
     again.type = "button";
     again.className = "again";
-    again.textContent = state.status === "lost" ? "Again" : cleared ? "Again" : "Next";
+    again.textContent = state.phase === "lost" ? "Again" : cleared ? "Again" : "Next";
     again.addEventListener("click", () => {
-      if (state.status === "won") {
+      if (state.phase === "won") {
         stageIndex = cleared ? 0 : stageIndex + 1;
       }
       state = createStage(STAGES[stageIndex]!);
@@ -160,18 +174,30 @@ if (board && progress && curtain) {
     paintCurtain();
   }
 
+  /** Once the last blocker is down the board plays itself out. */
+  function runOut(): void {
+    window.clearInterval(runTimer);
+    runTimer = window.setInterval(() => {
+      state = step(state);
+      paint();
+      if (state.phase !== "running") window.clearInterval(runTimer);
+    }, RUN_TICK);
+  }
+
   function runDemo(): void {
     demoTimer = window.setInterval(() => {
       if (holdFrames > 0) {
         // Sit on the "it got out" frame for a beat, then start over.
         holdFrames -= 1;
-        if (holdFrames === 0) state = createStage(STAGES[stageIndex]!);
-      } else if (state.status === "playing") {
+        if (holdFrames === 0) {
+          state = { ...createStage(STAGES[stageIndex]!), blocksLeft: 0, phase: "running" };
+        }
+      } else {
         state = step(state);
-        if (state.status !== "playing") holdFrames = 4;
+        if (state.phase !== "running") holdFrames = 4;
       }
       paint();
-    }, 430);
+    }, DEMO_TICK);
   }
 
   function takeOver(): void {
@@ -204,20 +230,33 @@ if (board && progress && curtain) {
   document.addEventListener("keydown", takeOver);
 
   board.addEventListener("click", (event) => {
-    if (demonstrating || state.status !== "playing") return;
+    if (demonstrating || state.phase !== "setup") return;
     const el = (event.target as HTMLElement).closest<HTMLElement>(".cell");
     if (!el) return;
     const cell: Cell = { x: Number(el.dataset["x"]), y: Number(el.dataset["y"]) };
 
-    const next = takeTurn(state, cell);
+    const next = tap(state, cell);
     if (next === null) {
-      if (!canPlace(state, cell)) refuse(cell.x, cell.y);
+      // Flash only for the refusal that means something. Tapping the maze,
+      // the way out or the runner is simply inert, and a red flash on those
+      // would turn the one signal the rules need into background noise ---
+      // what is left is exactly "that one would seal the way out".
+      const at = indexOf(state.cols, cell);
+      const plausible =
+        state.terrain[at] === "open" &&
+        !sameCell(cell, state.exit) &&
+        !state.runners.some((runner) => sameCell(runner.start, cell));
+      if (plausible && !canPlace(state, cell)) refuse(cell.x, cell.y);
       return;
     }
     state = next;
     paint();
+    if (state.phase === "running") runOut();
   });
 
+  // The demo needs a board that is already running, since setup has nothing
+  // to show: an empty maze and a runner that never moves.
+  state = { ...state, blocksLeft: 0, phase: "running" };
   paint();
   runDemo();
 }
