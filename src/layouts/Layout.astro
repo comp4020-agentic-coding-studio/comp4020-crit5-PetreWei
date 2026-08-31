@@ -6,6 +6,11 @@ interface Props {
   description?: string;
 }
 
+// Derived from the base rather than hardcoded, so it survives being carried
+// into next week's repo --- an icon path with last week's repo name in it
+// resolves on localhost and 404s on the live URL.
+const favicon = `${import.meta.env.BASE_URL.replace(/\/$/, "")}/favicon.svg`;
+
 const { title, description = "Replace this with one sentence saying what this page is. A search result and a link preview both show it." } = Astro.props;
 ---
 
@@ -19,6 +24,10 @@ const { title, description = "Replace this with one sentence saying what this pa
       name="description"
       content={description}
     />
+
+    <!-- Without this the browser asks for /favicon.ico and shows a blank
+         page icon in the tab when it 404s. -->
+    <link rel="icon" type="image/svg+xml" href={favicon} />
 
     <!--
       The link-preview card: public/card.png, 1200x630 --- replace it. The URL
