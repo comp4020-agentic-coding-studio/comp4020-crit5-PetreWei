@@ -20,11 +20,12 @@ const board = document.querySelector<HTMLElement>("#board");
 const progress = document.querySelector<HTMLElement>("#progress");
 const curtain = document.querySelector<HTMLElement>("#curtain");
 const start = document.querySelector<HTMLButtonElement>("#start");
+const hint = document.querySelector<HTMLButtonElement>("#hint");
 
 const RUN_TICK = 230;
 const DEMO_TICK = 260;
 
-if (board && progress && curtain && start) {
+if (board && progress && curtain && start && hint) {
   let stageIndex = 0;
   let state = createStage(STAGES[0]!);
   let runTimer = 0;
@@ -41,17 +42,10 @@ if (board && progress && curtain && start) {
   let demoPlan: Cell[] = [];
   let demoStep = 0;
 
-  // The hint is a one-time thing you get on the very first tap of the whole
-  // game, not a lesson you get retaught on every replay of stage one --- once
-  // you've placed a blocker anywhere, you've already learned what a tap does.
-  let hintEnabled = true;
-
-  // A different hint for a different reason: four losses on the same stage
-  // in a row means the maze itself is the obstacle, not any lesson about
-  // tapping. `solve()` already knows a winning sequence --- showing all but
-  // its last placement points at the shape of the answer without placing it
-  // for you, so the stage is still yours to actually finish.
-  let failCount = 0;
+  // Set only by pressing "Show solution", never on its own: `solve()` already
+  // knows a winning sequence, and showing all but its last placement points
+  // at the shape of the answer without placing it for you, so the stage is
+  // still yours to actually finish. Asking is the player's call to make.
   let hintPlan: readonly Cell[] = [];
 
   function paintProgress(): void {
@@ -98,19 +92,9 @@ if (board && progress && curtain && start) {
       }
     }
 
-    // Stage one, before the very first tap of the whole game: every cell that
-    // would accept a blocker gets a soft glow. It stops the moment you place
-    // one, and `hintEnabled` keeps it stopped for good --- a replay of stage
-    // one starts mid-skill instead of re-teaching what startup already showed.
-    const showHint =
-      hintEnabled &&
-      state.phase === "setup" &&
-      stageIndex === 0 &&
-      state.blocksLeft === STAGES[0]!.blocks;
-
-    // Past three straight losses: glow the cells `startRealRound` lined up,
-    // but only the ones still open --- once you've placed one yourself it
-    // has already done its job and should stop drawing the eye.
+    // Set only once "Show solution" has been pressed: glow the cells it
+    // lined up, but only the ones still open --- once you've placed one
+    // yourself it has already done its job and should stop drawing the eye.
     const suggested = new Set<number>();
     if (state.phase === "setup") {
       for (const cell of hintPlan) suggested.add(indexOf(state.cols, cell));
@@ -129,7 +113,6 @@ if (board && progress && curtain && start) {
         if (state.trail[at]) el.classList.add("cell--trail");
         if (onRoute.has(at)) el.classList.add("cell--route");
         if (sameCell(cell, state.exit)) el.classList.add("cell--exit");
-        if (showHint && canPlace(state, cell)) el.classList.add("cell--hint");
         if (suggested.has(at) && state.terrain[at] === "open") {
           el.classList.add("cell--suggest");
         }
@@ -198,10 +181,7 @@ if (board && progress && curtain && start) {
     again.className = "again";
     again.textContent = state.phase === "lost" ? "Again" : cleared ? "Again" : "Next";
     again.addEventListener("click", () => {
-      if (state.phase === "won") {
-        stageIndex = cleared ? 0 : stageIndex + 1;
-        failCount = 0;
-      }
+      if (state.phase === "won") stageIndex = cleared ? 0 : stageIndex + 1;
       startRealRound();
       paint();
       again.blur();
@@ -217,6 +197,7 @@ if (board && progress && curtain && start) {
     paintBoard();
     paintCurtain();
     start!.hidden = !demonstrating;
+    hint!.hidden = demonstrating || state.phase !== "setup";
   }
 
   /** Once the last blocker is down the board plays itself out. */
@@ -225,22 +206,25 @@ if (board && progress && curtain && start) {
     runTimer = window.setInterval(() => {
       state = step(state);
       paint();
-      if (state.phase !== "running") {
-        window.clearInterval(runTimer);
-        if (state.phase === "lost") failCount += 1;
-      }
+      if (state.phase !== "running") window.clearInterval(runTimer);
     }, RUN_TICK);
   }
 
-  /**
-   * A fresh copy of the current stage for an actual (non-demo) round. Past
-   * three straight losses on it, also line up a hint: `solve()`'s own
-   * winning sequence with its final placement dropped, so the glow shows
-   * where the answer is heading without ever finishing it for you.
-   */
+  /** A fresh copy of the current stage for an actual (non-demo) round. */
   function startRealRound(): void {
     state = createStage(STAGES[stageIndex]!);
-    hintPlan = failCount > 3 ? (solve(state) ?? []).slice(0, -1) : [];
+    hintPlan = [];
+  }
+
+  /**
+   * Lines up `solve()`'s own winning sequence for the round in progress,
+   * final placement dropped, so pressing the button points at the shape of
+   * the answer without ever finishing the stage for you.
+   */
+  function showSolution(): void {
+    if (state.phase !== "setup") return;
+    hintPlan = (solve(state) ?? []).slice(0, -1);
+    paint();
   }
 
   /**
@@ -299,6 +283,7 @@ if (board && progress && curtain && start) {
   // A native <button> gets keyboard activation (Enter/Space) and focus
   // styling for free, so there is no separate keydown handler to maintain.
   start.addEventListener("click", takeOver);
+  hint.addEventListener("click", showSolution);
 
   board.addEventListener("click", (event) => {
     if (demonstrating || state.phase !== "setup") return;
@@ -321,7 +306,6 @@ if (board && progress && curtain && start) {
       return;
     }
     state = next;
-    hintEnabled = false;
     paint();
     if (state.phase === "running") runOut();
   });
