@@ -18,11 +18,12 @@ import { STAGES } from "../game/stages";
 const board = document.querySelector<HTMLElement>("#board");
 const progress = document.querySelector<HTMLElement>("#progress");
 const curtain = document.querySelector<HTMLElement>("#curtain");
+const start = document.querySelector<HTMLButtonElement>("#start");
 
 const RUN_TICK = 230;
 const DEMO_TICK = 260;
 
-if (board && progress && curtain) {
+if (board && progress && curtain && start) {
   let stageIndex = 0;
   let state = createStage(STAGES[0]!);
   let runTimer = 0;
@@ -172,6 +173,7 @@ if (board && progress && curtain) {
     paintProgress();
     paintBoard();
     paintCurtain();
+    start!.hidden = !demonstrating;
   }
 
   /** Once the last blocker is down the board plays itself out. */
@@ -216,18 +218,12 @@ if (board && progress && curtain) {
     el.classList.add("cell--refused");
   }
 
-  // Anywhere, not just the board: during the demo the first input's whole job
-  // is to hand over, the way an arcade attract screen does, and it is not
-  // also a move --- the board it was aimed at is about to be swept away.
-  //
-  // Listening on click rather than pointerdown is what makes that safe. A
-  // click bubbles through the board's own handler first, which sees the demo
-  // still running and ignores it, and only then reaches here. Handing over on
-  // pointerdown instead needed a flag to suppress the click that followed,
-  // and that flag was a race: the two are separate tasks, and replacing the
-  // board between them detaches the element the click was aimed at.
-  document.addEventListener("click", takeOver);
-  document.addEventListener("keydown", takeOver);
+  // One button, always on top of the demo rather than only appearing during
+  // its losing beat: an arcade "tap anywhere to start" never actually looked
+  // like something to press, it just quietly reacted if you happened to.
+  // A native <button> gets keyboard activation (Enter/Space) and focus
+  // styling for free, so there is no separate keydown handler to maintain.
+  start.addEventListener("click", takeOver);
 
   board.addEventListener("click", (event) => {
     if (demonstrating || state.phase !== "setup") return;
