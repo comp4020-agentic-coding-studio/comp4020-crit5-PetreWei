@@ -322,6 +322,28 @@ main.page {
     0 0 0 6px var(--runner);
 }
 
+/*
+  Stage one's own intro: before the first tap, every cell that would accept a
+  blocker breathes with a soft ring. It is a picture of "these are yours",
+  not a sentence about it, and it is gone the instant you place one --- by
+  then the point has already been made.
+*/
+.cell--hint {
+  animation: hint-glow 1.6s ease-in-out infinite;
+}
+
+@keyframes hint-glow {
+  0%,
+  100% {
+    box-shadow: inset 0 0 0 3px transparent;
+  }
+  50% {
+    box-shadow:
+      inset 0 0 0 3px color-mix(in oklab, var(--block) 85%, transparent),
+      0 0 10px color-mix(in oklab, var(--block) 60%, transparent);
+  }
+}
+
 /* A refused tap: the one placement the rules forbid is the one that would
    leave no route at all, and this says so without a word. */
 .cell--refused {
@@ -456,5 +478,10 @@ main.page {
 
   .start {
     animation: none;
+  }
+
+  .cell--hint {
+    animation: none;
+    box-shadow: inset 0 0 0 3px color-mix(in oklab, var(--block) 70%, transparent);
   }
 }

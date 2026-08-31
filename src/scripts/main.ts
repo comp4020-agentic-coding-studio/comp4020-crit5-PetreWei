@@ -81,6 +81,15 @@ if (board && progress && curtain && start) {
       }
     }
 
+    // Stage one, before the very first tap: every cell that would accept a
+    // blocker gets a soft glow. It stops the moment you place one --- by then
+    // you already know a cell is something you can build on, and every later
+    // stage starts mid-skill instead of re-teaching it.
+    const showHint =
+      state.phase === "setup" &&
+      stageIndex === 0 &&
+      state.blocksLeft === STAGES[0]!.blocks;
+
     const cells: HTMLElement[] = [];
     for (let y = 0; y < state.rows; y++) {
       for (let x = 0; x < state.cols; x++) {
@@ -94,6 +103,7 @@ if (board && progress && curtain && start) {
         if (state.trail[at]) el.classList.add("cell--trail");
         if (onRoute.has(at)) el.classList.add("cell--route");
         if (sameCell(cell, state.exit)) el.classList.add("cell--exit");
+        if (showHint && canPlace(state, cell)) el.classList.add("cell--hint");
 
         // Resolved runners stay on the board on purpose. A spent one leaves a
         // husk where you stopped it, and an escaped one sits on the breach it
