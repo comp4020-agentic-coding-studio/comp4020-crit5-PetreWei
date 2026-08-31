@@ -37,6 +37,11 @@ if (board && progress && curtain && start) {
   let demoTimer = 0;
   let holdFrames = 0;
 
+  // The hint is a one-time thing you get on the very first tap of the whole
+  // game, not a lesson you get retaught on every replay of stage one --- once
+  // you've placed a blocker anywhere, you've already learned what a tap does.
+  let hintEnabled = true;
+
   function paintProgress(): void {
     const marks: HTMLElement[] = STAGES.map((_, i) => {
       const pip = document.createElement("span");
@@ -81,11 +86,12 @@ if (board && progress && curtain && start) {
       }
     }
 
-    // Stage one, before the very first tap: every cell that would accept a
-    // blocker gets a soft glow. It stops the moment you place one --- by then
-    // you already know a cell is something you can build on, and every later
-    // stage starts mid-skill instead of re-teaching it.
+    // Stage one, before the very first tap of the whole game: every cell that
+    // would accept a blocker gets a soft glow. It stops the moment you place
+    // one, and `hintEnabled` keeps it stopped for good --- a replay of stage
+    // one starts mid-skill instead of re-teaching what startup already showed.
     const showHint =
+      hintEnabled &&
       state.phase === "setup" &&
       stageIndex === 0 &&
       state.blocksLeft === STAGES[0]!.blocks;
@@ -256,6 +262,7 @@ if (board && progress && curtain && start) {
       return;
     }
     state = next;
+    hintEnabled = false;
     paint();
     if (state.phase === "running") runOut();
   });
