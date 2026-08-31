@@ -6,12 +6,13 @@ import {
   canPlace,
   createStage,
   indexOf,
+  placeBlock,
   routeFor,
   sameCell,
+  solve,
   step,
   tap,
   type Cell,
-  type State,
 } from "../game/field";
 import { STAGES } from "../game/stages";
 
@@ -28,14 +29,17 @@ if (board && progress && curtain && start) {
   let state = createStage(STAGES[0]!);
   let runTimer = 0;
 
-  // The goal of this game is to PREVENT something, and a board at rest can't
-  // say that: a token, a route and a way out read just as easily as "escort
-  // it to the exit", which is the opposite of the point. So before anyone
-  // touches it the board plays itself, loses, and resets --- the fail state
-  // is the only honest way to show what you are meant to stop.
+  // The goal of this game is to PREVENT something, but the only verb the
+  // player has is placing blockers, and a board at rest can't show a verb.
+  // So before anyone touches it the board plays a real, provably winning
+  // sequence from `solve()` --- the same blockers a good player would choose,
+  // going down one at a time, ending in "Contained" rather than an untouched
+  // maze the runner simply walks through.
   let demonstrating = true;
   let demoTimer = 0;
   let holdFrames = 0;
+  let demoPlan: Cell[] = [];
+  let demoStep = 0;
 
   // The hint is a one-time thing you get on the very first tap of the whole
   // game, not a lesson you get retaught on every replay of stage one --- once
@@ -202,14 +206,32 @@ if (board && progress && curtain && start) {
     }, RUN_TICK);
   }
 
+  /**
+   * A fresh stage-one board plus a winning placement sequence for it.
+   * `solve` is deterministic, so this is the same sequence every round; if it
+   * ever came back empty (it doesn't --- the spec proves every stage
+   * solvable) the round would simply sit in setup forever rather than
+   * pretend a placement it doesn't have.
+   */
+  function startDemoRound(): void {
+    const fresh = createStage(STAGES[stageIndex]!);
+    demoPlan = solve(fresh) ?? [];
+    demoStep = 0;
+    state = fresh;
+  }
+
   function runDemo(): void {
     demoTimer = window.setInterval(() => {
       if (holdFrames > 0) {
-        // Sit on the "it got out" frame for a beat, then start over.
+        // Sit on the verdict for a beat, then start over.
         holdFrames -= 1;
-        if (holdFrames === 0) {
-          state = { ...createStage(STAGES[stageIndex]!), blocksLeft: 0, phase: "running" };
-        }
+        if (holdFrames === 0) startDemoRound();
+      } else if (state.phase === "setup") {
+        // One blocker down per tick, so the placement is legible instead of
+        // appearing all at once.
+        const cell = demoPlan[demoStep];
+        demoStep += 1;
+        if (cell) state = placeBlock(state, cell) ?? state;
       } else {
         state = step(state);
         if (state.phase !== "running") holdFrames = 4;
@@ -267,9 +289,7 @@ if (board && progress && curtain && start) {
     if (state.phase === "running") runOut();
   });
 
-  // The demo needs a board that is already running, since setup has nothing
-  // to show: an empty maze and a runner that never moves.
-  state = { ...state, blocksLeft: 0, phase: "running" };
+  startDemoRound();
   paint();
   runDemo();
 }
