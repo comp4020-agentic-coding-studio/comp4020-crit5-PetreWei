@@ -196,6 +196,14 @@ main.page {
   cursor: pointer;
 }
 
+/* The keyboard cursor: one cell at a time carries focus (roving tabindex,
+   like a chessboard), so the outline has to sit inside the cell rather than
+   overlapping its neighbour the way the buttons' outside outline can. */
+.cell:focus-visible {
+  outline: 3px solid var(--block);
+  outline-offset: -3px;
+}
+
 /* The maze itself: masonry, filling its cell corner to corner, obviously
    not something you put there and not something you can move. */
 .cell--wall {

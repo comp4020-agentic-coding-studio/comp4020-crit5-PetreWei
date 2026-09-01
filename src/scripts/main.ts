@@ -48,6 +48,14 @@ if (board && progress && curtain && start && hint) {
   // still yours to actually finish. Asking is the player's call to make.
   let hintPlan: readonly Cell[] = [];
 
+  // The keyboard equivalent of "where the mouse is hovering": one logical
+  // cell that arrow keys move and Enter/Space activates, re-centred whenever
+  // a fresh board appears, the way a pointer would start over a new maze.
+  function centreCursor(): Cell {
+    return { x: Math.floor(state.cols / 2), y: Math.floor(state.rows / 2) };
+  }
+  let cursor: Cell = centreCursor();
+
   function paintProgress(): void {
     const marks: HTMLElement[] = STAGES.map((_, i) => {
       const pip = document.createElement("span");
@@ -100,6 +108,13 @@ if (board && progress && curtain && start && hint) {
       for (const cell of hintPlan) suggested.add(indexOf(state.cols, cell));
     }
 
+    // The board is one Tab stop, not one per cell: tabbing through 25+ cells
+    // one at a time would be unusable. A single roving cell carries
+    // `tabindex="0"`; arrow keys move which one that is (see the `keydown`
+    // listener below). Cells drop out of the Tab order entirely once the
+    // board stops being interactive, the same way the demo never was one.
+    const interactive = !demonstrating && state.phase === "setup";
+
     const cells: HTMLElement[] = [];
     for (let y = 0; y < state.rows; y++) {
       for (let x = 0; x < state.cols; x++) {
@@ -109,6 +124,11 @@ if (board && progress && curtain && start && hint) {
         el.className = `cell cell--${state.terrain[at]}`;
         el.dataset["x"] = String(x);
         el.dataset["y"] = String(y);
+
+        if (interactive) {
+          el.setAttribute("role", "gridcell");
+          el.tabIndex = sameCell(cell, cursor) ? 0 : -1;
+        }
 
         if (state.trail[at]) el.classList.add("cell--trail");
         if (onRoute.has(at)) el.classList.add("cell--route");
@@ -146,7 +166,20 @@ if (board && progress && curtain && start && hint) {
         cells.push(el);
       }
     }
+    // Read *before* `replaceChildren` runs, not after: detaching a focused
+    // element fires its blur/focusout synchronously, so by the next line
+    // `boardFocused` has already flipped to false even though the user never
+    // left the board. Checking `activeElement` here catches the true state
+    // an instant before that happens.
+    const hadFocus = interactive && board!.contains(document.activeElement);
     board!.replaceChildren(...cells);
+
+    // Restore focus onto the fresh cursor cell — otherwise every repaint (an
+    // arrow-key move included) would silently bounce keyboard focus to
+    // <body> and end the keyboard-only run right there.
+    if (hadFocus) {
+      cells[indexOf(state.cols, cursor)]?.focus();
+    }
   }
 
   function paintCurtain(): void {
@@ -214,6 +247,7 @@ if (board && progress && curtain && start && hint) {
   function startRealRound(): void {
     state = createStage(STAGES[stageIndex]!);
     hintPlan = [];
+    cursor = centreCursor();
   }
 
   /**
@@ -239,6 +273,7 @@ if (board && progress && curtain && start && hint) {
     demoPlan = solve(fresh) ?? [];
     demoStep = 0;
     state = fresh;
+    cursor = centreCursor();
   }
 
   function runDemo(): void {
@@ -267,6 +302,13 @@ if (board && progress && curtain && start && hint) {
     window.clearInterval(demoTimer);
     startRealRound();
     paint();
+
+    // The board sits earlier in the document than Start, so once Start is
+    // hidden a forward Tab would skip straight past the board to "Show
+    // solution" rather than landing on it --- there is nothing to Tab back
+    // to. Move focus onto the cursor cell explicitly, the one time the board
+    // has to steal focus rather than merely keep hold of it.
+    board!.querySelector<HTMLElement>('.cell[tabindex="0"]')?.focus();
   }
 
   function refuse(x: number, y: number): void {
@@ -277,19 +319,9 @@ if (board && progress && curtain && start && hint) {
     el.classList.add("cell--refused");
   }
 
-  // One button, always on top of the demo rather than only appearing during
-  // its losing beat: an arcade "tap anywhere to start" never actually looked
-  // like something to press, it just quietly reacted if you happened to.
-  // A native <button> gets keyboard activation (Enter/Space) and focus
-  // styling for free, so there is no separate keydown handler to maintain.
-  start.addEventListener("click", takeOver);
-  hint.addEventListener("click", showSolution);
-
-  board.addEventListener("click", (event) => {
+  /** Shared by the click handler and the keyboard's Enter/Space. */
+  function attemptPlacement(cell: Cell): void {
     if (demonstrating || state.phase !== "setup") return;
-    const el = (event.target as HTMLElement).closest<HTMLElement>(".cell");
-    if (!el) return;
-    const cell: Cell = { x: Number(el.dataset["x"]), y: Number(el.dataset["y"]) };
 
     const next = tap(state, cell);
     if (next === null) {
@@ -308,6 +340,52 @@ if (board && progress && curtain && start && hint) {
     state = next;
     paint();
     if (state.phase === "running") runOut();
+  }
+
+  // One button, always on top of the demo rather than only appearing during
+  // its losing beat: an arcade "tap anywhere to start" never actually looked
+  // like something to press, it just quietly reacted if you happened to.
+  // A native <button> gets keyboard activation (Enter/Space) and focus
+  // styling for free, so there is no separate keydown handler to maintain.
+  start.addEventListener("click", takeOver);
+  hint.addEventListener("click", showSolution);
+
+  board.addEventListener("click", (event) => {
+    const el = (event.target as HTMLElement).closest<HTMLElement>(".cell");
+    if (!el) return;
+    attemptPlacement({ x: Number(el.dataset["x"]), y: Number(el.dataset["y"]) });
+  });
+
+  // Arrow keys move the one roving cursor cell (paintBoard keeps its
+  // tabindex in sync); Enter or Space activates it exactly like a click.
+  // No on-screen text ever names this scheme --- the board is the one
+  // thing on the page a keyboard-only player would try arrowing around.
+  board.addEventListener("keydown", (event) => {
+    if (demonstrating || state.phase !== "setup") return;
+
+    switch (event.key) {
+      case "ArrowUp":
+        cursor = { x: cursor.x, y: Math.max(0, cursor.y - 1) };
+        break;
+      case "ArrowDown":
+        cursor = { x: cursor.x, y: Math.min(state.rows - 1, cursor.y + 1) };
+        break;
+      case "ArrowLeft":
+        cursor = { x: Math.max(0, cursor.x - 1), y: cursor.y };
+        break;
+      case "ArrowRight":
+        cursor = { x: Math.min(state.cols - 1, cursor.x + 1), y: cursor.y };
+        break;
+      case "Enter":
+      case " ":
+        event.preventDefault();
+        attemptPlacement(cursor);
+        return;
+      default:
+        return;
+    }
+    event.preventDefault(); // the page must not scroll under an arrow press
+    paintBoard();
   });
 
   startDemoRound();
