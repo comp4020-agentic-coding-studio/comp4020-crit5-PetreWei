@@ -366,9 +366,9 @@ main.page {
 
 /*
   Asked for, not imposed: pressing "Show solution" lines up `solve()`'s own
-  winning sequence with its final placement dropped, so the glow shows where
-  the answer is heading without ever finishing it for you. It never appears
-  on its own --- the player has to ask.
+  full winning sequence, so the glow shows every cell the answer needs ---
+  the player still has to place each one. It never appears on its own --- the
+  player has to ask.
 */
 .cell--suggest {
   animation: suggest-glow 2.2s ease-in-out infinite;

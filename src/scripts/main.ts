@@ -42,9 +42,9 @@ if (board && progress && curtain && start && hint) {
   let demoPlan: Cell[] = [];
 
   // Set only by pressing "Show solution", never on its own: `solve()` already
-  // knows a winning sequence, and showing all but its last placement points
-  // at the shape of the answer without placing it for you, so the stage is
-  // still yours to actually finish. Asking is the player's call to make.
+  // knows a winning sequence, and the button lines up the whole thing, so
+  // the player still has to place each blocker themselves. Asking is the
+  // player's call to make.
   let hintPlan: readonly Cell[] = [];
 
   // The keyboard equivalent of "where the mouse is hovering": one logical
@@ -250,13 +250,13 @@ if (board && progress && curtain && start && hint) {
   }
 
   /**
-   * Lines up `solve()`'s own winning sequence for the round in progress,
-   * final placement dropped, so pressing the button points at the shape of
-   * the answer without ever finishing the stage for you.
+   * Lines up `solve()`'s own winning sequence for the round in progress, so
+   * pressing the button shows the full answer -- the player still has to
+   * place each blocker themselves.
    */
   function showSolution(): void {
     if (state.phase !== "setup") return;
-    hintPlan = (solve(state) ?? []).slice(0, -1);
+    hintPlan = solve(state) ?? [];
     paint();
   }
 
