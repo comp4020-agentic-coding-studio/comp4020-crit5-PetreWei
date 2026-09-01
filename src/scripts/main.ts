@@ -3,9 +3,9 @@
 // nothing here is allowed to decide anything.
 
 import {
-  canPlace,
   createStage,
   indexOf,
+  isOpenTarget,
   placeBlock,
   routeFor,
   sameCell,
@@ -40,7 +40,6 @@ if (board && progress && curtain && start && hint) {
   let demoTimer = 0;
   let holdFrames = 0;
   let demoPlan: Cell[] = [];
-  let demoStep = 0;
 
   // Set only by pressing "Show solution", never on its own: `solve()` already
   // knows a winning sequence, and showing all but its last placement points
@@ -270,8 +269,7 @@ if (board && progress && curtain && start && hint) {
    */
   function startDemoRound(): void {
     const fresh = createStage(STAGES[stageIndex]!);
-    demoPlan = solve(fresh) ?? [];
-    demoStep = 0;
+    demoPlan = [...(solve(fresh) ?? [])];
     state = fresh;
     cursor = centreCursor();
   }
@@ -285,8 +283,7 @@ if (board && progress && curtain && start && hint) {
       } else if (state.phase === "setup") {
         // One blocker down per tick, so the placement is legible instead of
         // appearing all at once.
-        const cell = demoPlan[demoStep];
-        demoStep += 1;
+        const cell = demoPlan.shift();
         if (cell) state = placeBlock(state, cell) ?? state;
       } else {
         state = step(state);
@@ -308,11 +305,11 @@ if (board && progress && curtain && start && hint) {
     // solution" rather than landing on it --- there is nothing to Tab back
     // to. Move focus onto the cursor cell explicitly, the one time the board
     // has to steal focus rather than merely keep hold of it.
-    board!.querySelector<HTMLElement>('.cell[tabindex="0"]')?.focus();
+    (board!.children[indexOf(state.cols, cursor)] as HTMLElement | undefined)?.focus();
   }
 
-  function refuse(x: number, y: number): void {
-    const el = board!.querySelector<HTMLElement>(`[data-x="${x}"][data-y="${y}"]`);
+  function refuse(cell: Cell): void {
+    const el = board!.children[indexOf(state.cols, cell)] as HTMLElement | undefined;
     if (!el) return;
     el.classList.remove("cell--refused");
     void el.offsetWidth; // restart the animation on a repeated tap
@@ -329,12 +326,7 @@ if (board && progress && curtain && start && hint) {
       // the way out or the runner is simply inert, and a red flash on those
       // would turn the one signal the rules need into background noise ---
       // what is left is exactly "that one would seal the way out".
-      const at = indexOf(state.cols, cell);
-      const plausible =
-        state.terrain[at] === "open" &&
-        !sameCell(cell, state.exit) &&
-        !state.runners.some((runner) => sameCell(runner.start, cell));
-      if (plausible && !canPlace(state, cell)) refuse(cell.x, cell.y);
+      if (isOpenTarget(state, cell)) refuse(cell);
       return;
     }
     state = next;
@@ -360,30 +352,32 @@ if (board && progress && curtain && start && hint) {
   // tabindex in sync); Enter or Space activates it exactly like a click.
   // No on-screen text ever names this scheme --- the board is the one
   // thing on the page a keyboard-only player would try arrowing around.
+  const ARROW_STEPS: Readonly<Record<string, Cell>> = {
+    ArrowUp: { x: 0, y: -1 },
+    ArrowDown: { x: 0, y: 1 },
+    ArrowLeft: { x: -1, y: 0 },
+    ArrowRight: { x: 1, y: 0 },
+  };
+
+  function clamp(value: number, max: number): number {
+    return Math.max(0, Math.min(max, value));
+  }
+
   board.addEventListener("keydown", (event) => {
     if (demonstrating || state.phase !== "setup") return;
 
-    switch (event.key) {
-      case "ArrowUp":
-        cursor = { x: cursor.x, y: Math.max(0, cursor.y - 1) };
-        break;
-      case "ArrowDown":
-        cursor = { x: cursor.x, y: Math.min(state.rows - 1, cursor.y + 1) };
-        break;
-      case "ArrowLeft":
-        cursor = { x: Math.max(0, cursor.x - 1), y: cursor.y };
-        break;
-      case "ArrowRight":
-        cursor = { x: Math.min(state.cols - 1, cursor.x + 1), y: cursor.y };
-        break;
-      case "Enter":
-      case " ":
-        event.preventDefault();
-        attemptPlacement(cursor);
-        return;
-      default:
-        return;
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      attemptPlacement(cursor);
+      return;
     }
+
+    const move = ARROW_STEPS[event.key];
+    if (!move) return;
+    cursor = {
+      x: clamp(cursor.x + move.x, state.cols - 1),
+      y: clamp(cursor.y + move.y, state.rows - 1),
+    };
     event.preventDefault(); // the page must not scroll under an arrow press
     paintBoard();
   });

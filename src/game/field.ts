@@ -62,6 +62,11 @@ function inBounds(cols: number, rows: number, cell: Cell): boolean {
   return cell.x >= 0 && cell.y >= 0 && cell.x < cols && cell.y < rows;
 }
 
+function cellFor(cols: number, index: number): Cell {
+  const x = index % cols;
+  return { x, y: (index - x) / cols };
+}
+
 const STEPS: readonly Cell[] = [
   { x: 0, y: -1 },
   { x: 1, y: 0 },
@@ -95,8 +100,7 @@ export function pathOver(
   while (frontier.length > 0) {
     const next: number[] = [];
     for (const here of frontier) {
-      const x = here % cols;
-      const y = (here - x) / cols;
+      const { x, y } = cellFor(cols, here);
       for (const step of STEPS) {
         const cell = { x: x + step.x, y: y + step.y };
         if (!inBounds(cols, rows, cell)) continue;
@@ -108,7 +112,7 @@ export function pathOver(
         if (there === target) {
           const route: Cell[] = [];
           for (let at = target; at !== -1; at = cameFrom[at]!) {
-            route.push({ x: at % cols, y: (at - (at % cols)) / cols });
+            route.push(cellFor(cols, at));
           }
           return route.reverse();
         }
@@ -172,6 +176,20 @@ export function createStage(config: StageConfig): State {
  * routing puzzle instead of a sealing puzzle, since walling the exit in
  * would otherwise win every stage outright.
  */
+/**
+ * The cheap conditions a target cell must meet before it's even worth
+ * running `canPlace`'s trial-BFS: open ground, not the exit, not where a
+ * runner starts. `main.ts` uses this to tell "that tap did nothing" apart
+ * from "that placement would have sealed the way out."
+ */
+export function isOpenTarget(state: State, cell: Cell): boolean {
+  return (
+    state.terrain[indexOf(state.cols, cell)] === "open" &&
+    !sameCell(cell, state.exit) &&
+    !state.runners.some((runner) => sameCell(runner.start, cell))
+  );
+}
+
 export function canPlace(state: State, cell: Cell): boolean {
   if (state.phase !== "setup") return false;
   if (state.blocksLeft <= 0) return false;
