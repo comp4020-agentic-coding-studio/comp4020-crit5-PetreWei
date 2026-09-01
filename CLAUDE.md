@@ -1,6 +1,6 @@
 # COMP4020 prototype
 
-This is a static site written in HTML, CSS and TypeScript. It builds to plain HTML, CSS and JS and deploys to GitHub Pages. **The deployed site is what gets marked** — not this repo, and not "it works on my machine". A marker opens the live URL in Chrome at two sizes, 1920×1080 (desktop) and 390×844 (phone). Both count in full.
+This is a static site written in HTML, CSS and TypeScript. It builds to plain HTML, CSS and JS and deploys to GitHub Pages. **The deployed site is what gets marked** — not this repo, and not "it works on my machine". A marker opens the live URL in Chrome at two sizes, 1920×1080 (desktop) and 390×844 (phone), and drives it by keyboard alone — Tab order, arrow keys, Enter/Space — as readily as by mouse. All three count in full, and none of them show up in a green `vitest` run.
 
 The course website publishes each deliverable's brief (the open problem) and spec (the fixed contract); this repo's name tells you which applies. Run the course plugin's **start** skill at the beginning of each week — it fetches the right spec and helps turn its checkable lines into tests. Read the brief and spec before planning or building.
 
@@ -31,6 +31,7 @@ The course website publishes each deliverable's brief (the open problem) and spe
 - **When asked for an outcome, measure first.** "Make it readable" invites a diff approved by eye. Get the numbers before the diff.
 - **JSDOM can't run client scripts or lay out the page.** Keep logic DOM-free and unit-test it directly; check the built HTML for what the script needs to find; verify anything visual or interactive by hand in a real browser.
 - **A correction that keeps repeating belongs in a sensor, not in this file.** Every line here is read on every turn and competes for attention with the task, so a rule that is always on is easy to stop seeing. The dev-server rule above was already written when it got broken again, and an assertion — not the rule — is what caught it. When a mistake recurs, add the check that fires on it and keep this list short enough to still be read.
+- **A stuck automated interaction is evidence to investigate, not a verdict on the app.** A keyboard-only Playwright round once looked permanently stuck after one blocker; the app was fine — the script assumed stage 1 needed one blocker instead of two, and didn't know the hint deliberately withholds the winning cell on the last placement. Check the script's assumptions against the app's actual state before believing the artefact is broken.
 
 ## This file is yours
 

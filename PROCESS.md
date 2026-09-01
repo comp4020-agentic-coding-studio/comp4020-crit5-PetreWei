@@ -1,9 +1,5 @@
 # Process overview
 
-<!-- TEMPLATE: this file is a shape to fill in, not a form. Replace everything
-     in it with your own overview, and delete this comment — `pnpm
-     check:evidence` will remind you if it's still here. -->
-
 A reading-guide to how the work came together --- a map to your process, not an
 essay about it. Markers read this file and follow its citations; they don't
 trawl the repo for evidence you didn't point at, so if a moment mattered, cite
@@ -17,45 +13,76 @@ cover every deliverable.
 
 ## What I built
 
-One paragraph: the thing, and the idea behind it.
+**Detour**, a maze-blocker puzzle: a runner is already loose in a fixed maze
+and you spend a small, visible budget of blockers to seal its route before it
+reaches the exit. There's no wall-building race against a moving target ---
+setup and run are separate phases, so a stage's difficulty is a single
+measurable question (can this many blockers push every route past this much
+stamina), and ten stages ramp that question from a floor anyone clears on the
+first try to one that needs real search. No tutorial appears anywhere; the
+board's own visuals (a shrinking stamina disc, an exit drawn as a breach in
+the wall, both endings left standing on the board) do the teaching a caption
+would otherwise have to do.
 
 ## The moments that mattered
 
-Three or four for an assignment; fewer is fine for a weekly prototype. Keep the
-list short so each moment has room to do all four jobs:
+1. **The clock and the building were the same rule.** The first working
+   version had you tapping cells to grow walls in real time while the runner
+   walked, and each tap also cost it a step --- so difficulty could only be
+   tuned by feel. Instead of adding more mazes to that loop, I split it into a
+   setup phase (spend a fixed budget) followed by an automatic run, which
+   turns "is this stage fair" into a countable question. I checked it by
+   enumerating every legal placement of blockers on each maze, scoring the
+   winning share, and tuning stamina to land on an explicit ramp (21.8% down
+   to 1.0% across the stages) --- then added a test asserting every shipped
+   stage is actually solvable within its budget, so "feels harder" became a
+   number `pnpm check` verifies.
+   [`3d16c9a`](https://github.com/comp4020-agentic-coding-studio/comp4020-crit5-PetreWei/commit/3d16c9a)
 
-1. **what happened** --- the problem, or the thing that went wrong
-2. **what you did instead of the obvious thing** --- the call you made, and why
-   it beat the obvious one
-3. **how you knew it was right** --- the check you ran, the viewport you looked
-   at, what you read before accepting the diff
-4. **the citation** --- a commit or commit range, a `CLAUDE.md` change, a check
-   that went from red to green, a prompt paired with the commit it produced
+2. **Playing it found the board could be read backwards.** With a token, a
+   dotted route and a way out, nothing stopped a first look from reading
+   "escort it to the exit" instead of "trap it" --- the opposite of the point,
+   under which winning looks like losing. The brief and the repo's own
+   no-tutorial test rule out fixing that with a caption, so I changed only
+   what the board shows: stamina drawn as a shrinking fraction of a whole
+   thing (a weakening runner reads as winning; a counting number reads as a
+   score), the exit redrawn as a breach punched through the frame rather than
+   a green prize square, and both endings left visible on the board instead of
+   vanishing. I knew it landed because handing the built game to someone cold
+   got the read right --- "contain it" --- before their first placement.
+   [`0564aff`](https://github.com/comp4020-agentic-coding-studio/comp4020-crit5-PetreWei/commit/0564aff)
 
-Jobs 2 and 3 are the ones the repo can't tell a reader on its own, so they're
-where the marks are. The strongest moments are the ones where a correction
-landed in the **harness** --- the standards and checks your work has to satisfy
---- rather than in a retry: a rule added to `CLAUDE.md`, a check wired up, an
-attempt thrown away. Retrying until it passes is the routine case, and changing
-what the work runs against is the skilled one.
+3. **A hint the game gave you is not the same as a hint you asked for.** I'd
+   added a cell glow that appeared unprompted after four straight losses, to
+   keep a no-tutorial game legible without a word of text. Losing a few
+   streaks myself made the problem obvious: a hint the game volunteers
+   undercuts the very "no tutorial" spirit it exists to protect. I reworked it
+   into a quiet corner button the player has to press, wired to the same
+   solved sequence, and confirmed it only ever appears during setup and
+   renders the same at both viewports --- a design correction made from
+   playing my own game, not from a bug report.
+   [`dbeacb4...86f0a01`](https://github.com/comp4020-agentic-coding-studio/comp4020-crit5-PetreWei/compare/dbeacb4...86f0a01)
 
-Cite each moment as a link whose text is the commit hash or range and whose
-target is this repo's commit or compare URL, so a reader clicks straight to the
-evidence:
+4. **Keyboard was the surface 57 green tests never touched.** Reading
+   lecture 5's "drive the artefact like a marker" against the live deploy
+   found a real gap: the board had a click handler and nothing else, so a
+   marker without a mouse could reach Start and Show solution (native buttons
+   get that for free) but could never place a single blocker. I added a
+   roving-tabindex cursor --- one Tab stop for the whole grid, arrow keys move
+   it, Enter/Space activates it --- rather than one Tab stop per cell, which
+   would make a board this size unusable to tab through. Verifying it with a
+   real keyboard-only Playwright round caught a second, smaller lesson: the
+   round looked permanently stuck after one blocker, and my first instinct was
+   to suspect the app. It wasn't --- the script assumed the wrong number of
+   blockers for stage 1 and didn't know the hint deliberately withholds the
+   final cell. Fixing the script instead of the app, and reading that
+   distinction straight out of lecture 5's own "a failed automated interaction
+   is evidence to investigate, not a conclusion about the artefact," is now a
+   line in `CLAUDE.md` rather than a one-off save.
+   [`19f1ca4`](https://github.com/comp4020-agentic-coding-studio/comp4020-crit5-PetreWei/commit/19f1ca4)
 
-- one commit: [`a1b2c3d`](https://github.com/YOUR-ORG/YOUR-REPO/commit/a1b2c3d)
-- a range:
-  [`a1b2c3d...e4f5a6b`](https://github.com/YOUR-ORG/YOUR-REPO/compare/a1b2c3d...e4f5a6b)
-
-To pair a prompt with the commit it produced, quote the prompt (curated, not a
-full transcript) next to the citation:
-
-> the prompt, verbatim
-
-Screenshots are welcome where one carries the verification better than a
-sentence does. Commit the file to this repo and link it with a **relative**
-path, which is what makes it render on GitHub: `![alt text](docs/before.png)`.
-Images don't count towards the word count and don't replace the citation.
+   > Please read `~/4020/lecture-notes` and improve current project based on
+   > it, especially on `lecture-05.md`.
 
 ## Before you ship
 
